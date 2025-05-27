@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+# vim: noai:ts=4:sw=4:expandtab
+# shellcheck source=/dev/null
+# shellcheck disable=2009
+
+version=0.1.0
+
+get_macos_name() {
+    local version="$1"
+    local major="${version%%.*}"
+    local minor="${version#*.}"
+    minor="${minor%%.*}"
+
+    case "$major" in
+    15) echo "Sequoia" ;;
+    14) echo "Sonoma" ;;
+    13) echo "Ventura" ;;
+    12) echo "Monterey" ;;
+    11) echo "Big Sur" ;;
+    10)
+        case "$minor" in
+        15) echo "Catalina" ;;
+        14) echo "Mojave" ;;
+        13) echo "High Sierra" ;;
+        12) echo "Sierra" ;;
+        11) echo "El Capitan" ;;
+        10) echo "Yosemite" ;;
+        9) echo "Mavericks" ;;
+        8) echo "Mountain Lion" ;;
+        7) echo "Lion" ;;
+        6) echo "Snow Leopard" ;;
+        *) echo "OS X" ;;
+        esac
+        ;;
+    *) echo "macOS" ;;
+    esac
+}
+
+distro() {
+    if [[ "$OSTYPE" == "darwin"* ]] || [[ "$(uname)" == "Darwin" ]]; then
+        case "$1" in
+        "name")
+            echo "macOS"
+            ;;
+        "version")
+            sw_vers -productVersion 2>/dev/null || echo "Unknown"
+            ;;
+        "id")
+            echo "macos"
+            ;;
+        "pretty")
+            local version build name
+            version=$(sw_vers -productVersion 2>/dev/null || echo "Unknown")
+            build=$(sw_vers -buildVersion 2>/dev/null || echo "Unknown")
+            name=$(get_macos_name "$version")
+            echo "macOS ${name} ${version} (${build})"
+            ;;
+        "codename")
+            local version
+            version=$(sw_vers -productVersion 2>/dev/null || echo "Unknown")
+            get_macos_name "$version" | tr '[:upper:]' '[:lower:]' | tr ' ' '-'
+            ;;
+        *)
+            echo "Usage: distrowat {name|version|id|pretty|codename}"
+            ;;
+        esac
+        return
+    fi
+
+    # Original Linux detection code
+    case "$1" in
+    "name")
+        if [ -f /etc/os-release ]; then
+            grep "^NAME=" /etc/os-release | cut -d= -f2 | tr -d '"'
+        elif [ -f /etc/redhat-release ]; then
+            awk '{print $1}' /etc/redhat-release
+        elif [ -f /etc/debian_version ]; then
+            echo "Debian"
+        fi
+        ;;
+    "version")
+        if [ -f /etc/os-release ]; then
+            grep "^VERSION_ID=" /etc/os-release | cut -d= -f2 | tr -d '"'
+        elif [ -f /etc/redhat-release ]; then
+            grep -oE '[0-9]+\.?[0-9]*' /etc/redhat-release | head -1
+        elif [ -f /etc/debian_version ]; then
+            cat /etc/debian_version
+        fi
+        ;;
+    "id")
+        if [ -f /etc/os-release ]; then
+            grep "^ID=" /etc/os-release | cut -d= -f2 | tr -d '"'
+        elif [ -f /etc/redhat-release ]; then
+            awk '{print tolower($1)}' /etc/redhat-release
+        elif [ -f /etc/debian_version ]; then
+            echo "debian"
+        fi
+        ;;
+    "pretty")
+        if [ -f /etc/os-release ]; then
+            grep "^PRETTY_NAME=" /etc/os-release | cut -d= -f2 | tr -d '"'
+        elif [ -f /etc/redhat-release ]; then
+            cat /etc/redhat-release
+        elif [ -f /etc/debian_version ]; then
+            echo "Debian GNU/Linux $(cat /etc/debian_version)"
+        fi
+        ;;
+    "codename")
+        if [ -f /etc/os-release ]; then
+            grep "^VERSION_CODENAME=" /etc/os-release | cut -d= -f2 | tr -d '"'
+        elif command -v lsb_release >/dev/null 2>&1; then
+            lsb_release -cs
+        fi
+        ;;
+    *)
+        echo "Usage: distro {name|version|id|pretty|codename}"
+        ;;
+    esac
+}
+
+distro "$@"
