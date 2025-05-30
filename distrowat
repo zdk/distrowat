@@ -3,7 +3,65 @@
 # shellcheck source=/dev/null
 # shellcheck disable=2009
 
-version=0.1.0
+version=0.2.0
+
+# Default output format
+OUTPUT_FORMAT="color"
+
+# Color definitions (will be used only when OUTPUT_FORMAT is "color")
+set_colors() {
+    if [[ "$OUTPUT_FORMAT" == "color" ]] && [[ -t 1 ]]; then
+        RED=$'\033[0;31m'
+        GREEN=$'\033[0;32m'
+        YELLOW=$'\033[0;33m'
+        BLUE=$'\033[0;34m'
+        PURPLE=$'\033[0;35m'
+        CYAN=$'\033[0;36m'
+        BOLD=$'\033[1m'
+        RESET=$'\033[0m'
+    else
+        RED=''
+        GREEN=''
+        YELLOW=''
+        BLUE=''
+        PURPLE=''
+        CYAN=''
+        BOLD=''
+        RESET=''
+    fi
+}
+
+# Initialize colors
+set_colors
+
+# Help function
+show_help() {
+    printf "%b" "${BOLD}distro${RESET} - Display distribution information\n"
+    printf "\n"
+    printf "%b" "${BOLD}USAGE:${RESET}\n"
+    printf "%b" "  distro [OPTIONS] {name|version|id|pretty|codename|all}\n"
+    printf "\n"
+    printf "%b" "${BOLD}OPTIONS:${RESET}\n"
+    printf "%b" "  -p, --plain    Plain text output (no colors, simple format)\n"
+    printf "%b" "  -c, --color    Colored output (default)\n"
+    printf "%b" "  -j, --json     JSON formatted output\n"
+    printf "%b" "  -h, --help     Show this help message\n"
+    printf "%b" "  -v, --version  Show version information\n"
+    printf "\n"
+    printf "%b" "${BOLD}COMMANDS:${RESET}\n"
+    printf "%b" "  ${CYAN}name${RESET}      Distribution name\n"
+    printf "%b" "  ${CYAN}version${RESET}   Distribution version\n"
+    printf "%b" "  ${CYAN}id${RESET}        Distribution ID\n"
+    printf "%b" "  ${CYAN}pretty${RESET}    Pretty formatted name\n"
+    printf "%b" "  ${CYAN}codename${RESET}  Distribution codename\n"
+    printf "%b" "  ${CYAN}all${RESET}       Show all information\n"
+    printf "\n"
+    printf "%b" "${BOLD}EXAMPLES:${RESET}\n"
+    printf "%b" "  distro pretty                # Colored output (default)\n"
+    printf "%b" "  distro --plain version       # Plain text output\n"
+    printf "%b" "  distro --json all           # JSON output\n"
+    printf "%b" "  distro -p name              # Short option for plain\n"
+}
 
 get_macos_name() {
     local version="$1"
@@ -36,86 +94,272 @@ get_macos_name() {
     esac
 }
 
-distro() {
+# Get all distribution information
+get_all_info() {
+    local name version id pretty codename
+
     if [[ "$OSTYPE" == "darwin"* ]] || [[ "$(uname)" == "Darwin" ]]; then
-        case "$1" in
-        "name")
-            echo "macOS"
-            ;;
-        "version")
-            sw_vers -productVersion 2>/dev/null || echo "Unknown"
-            ;;
-        "id")
-            echo "macos"
-            ;;
-        "pretty")
-            local version build name
-            version=$(sw_vers -productVersion 2>/dev/null || echo "Unknown")
-            build=$(sw_vers -buildVersion 2>/dev/null || echo "Unknown")
-            name=$(get_macos_name "$version")
-            echo "macOS ${name} ${version} (${build})"
-            ;;
-        "codename")
-            local version
-            version=$(sw_vers -productVersion 2>/dev/null || echo "Unknown")
-            get_macos_name "$version" | tr '[:upper:]' '[:lower:]' | tr ' ' '-'
-            ;;
-        *)
-            echo "Usage: distrowat {name|version|id|pretty|codename}"
-            ;;
-        esac
-        return
+        name="macOS"
+        version=$(sw_vers -productVersion 2>/dev/null || echo "Unknown")
+        id="macos"
+        local build=$(sw_vers -buildVersion 2>/dev/null || echo "Unknown")
+        local version_name=$(get_macos_name "$version")
+        pretty="macOS ${version_name} ${version} (${build})"
+        codename=$(echo "$version_name" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
+    else
+        # Linux detection
+        if [ -f /etc/os-release ]; then
+            name=$(grep "^NAME=" /etc/os-release | cut -d= -f2 | tr -d '"')
+            version=$(grep "^VERSION_ID=" /etc/os-release | cut -d= -f2 | tr -d '"')
+            id=$(grep "^ID=" /etc/os-release | cut -d= -f2 | tr -d '"')
+            pretty=$(grep "^PRETTY_NAME=" /etc/os-release | cut -d= -f2 | tr -d '"')
+            codename=$(grep "^VERSION_CODENAME=" /etc/os-release | cut -d= -f2 | tr -d '"')
+        elif [ -f /etc/redhat-release ]; then
+            name=$(awk '{print $1}' /etc/redhat-release)
+            version=$(grep -oE '[0-9]+\.?[0-9]*' /etc/redhat-release | head -1)
+            id=$(awk '{print tolower($1)}' /etc/redhat-release)
+            pretty=$(cat /etc/redhat-release)
+            codename=""
+        elif [ -f /etc/debian_version ]; then
+            name="Debian"
+            version=$(cat /etc/debian_version)
+            id="debian"
+            pretty="Debian GNU/Linux $(cat /etc/debian_version)"
+            codename=$(command -v lsb_release >/dev/null 2>&1 && lsb_release -cs || echo "")
+        else
+            name="Unknown"
+            version="Unknown"
+            id="unknown"
+            pretty="Unknown Linux Distribution"
+            codename=""
+        fi
     fi
 
-    # Original Linux detection code
-    case "$1" in
-    "name")
-        if [ -f /etc/os-release ]; then
-            grep "^NAME=" /etc/os-release | cut -d= -f2 | tr -d '"'
-        elif [ -f /etc/redhat-release ]; then
-            awk '{print $1}' /etc/redhat-release
-        elif [ -f /etc/debian_version ]; then
-            echo "Debian"
-        fi
+    # Handle empty codename
+    [ -z "$codename" ] && codename="N/A"
+
+    echo "$name|$version|$id|$pretty|$codename"
+}
+
+# Format output based on selected format
+format_output() {
+    local field="$1"
+    local value="$2"
+
+    case "$OUTPUT_FORMAT" in
+    "json")
+        # Escape quotes in value for JSON
+        value=$(echo "$value" | sed 's/"/\\"/g')
+        echo "{\"$field\": \"$value\"}"
         ;;
-    "version")
-        if [ -f /etc/os-release ]; then
-            grep "^VERSION_ID=" /etc/os-release | cut -d= -f2 | tr -d '"'
-        elif [ -f /etc/redhat-release ]; then
-            grep -oE '[0-9]+\.?[0-9]*' /etc/redhat-release | head -1
-        elif [ -f /etc/debian_version ]; then
-            cat /etc/debian_version
-        fi
+    "plain")
+        # Plain text output - just the value
+        echo "$value"
         ;;
-    "id")
-        if [ -f /etc/os-release ]; then
-            grep "^ID=" /etc/os-release | cut -d= -f2 | tr -d '"'
-        elif [ -f /etc/redhat-release ]; then
-            awk '{print tolower($1)}' /etc/redhat-release
-        elif [ -f /etc/debian_version ]; then
-            echo "debian"
-        fi
-        ;;
-    "pretty")
-        if [ -f /etc/os-release ]; then
-            grep "^PRETTY_NAME=" /etc/os-release | cut -d= -f2 | tr -d '"'
-        elif [ -f /etc/redhat-release ]; then
-            cat /etc/redhat-release
-        elif [ -f /etc/debian_version ]; then
-            echo "Debian GNU/Linux $(cat /etc/debian_version)"
-        fi
-        ;;
-    "codename")
-        if [ -f /etc/os-release ]; then
-            grep "^VERSION_CODENAME=" /etc/os-release | cut -d= -f2 | tr -d '"'
-        elif command -v lsb_release >/dev/null 2>&1; then
-            lsb_release -cs
-        fi
-        ;;
-    *)
-        echo "Usage: distro {name|version|id|pretty|codename}"
+    "color")
+        # Colored output with labels
+        case "$field" in
+        "name")
+            printf "%b\n" "${BOLD}${GREEN}Distribution Name:${RESET} ${CYAN}$value${RESET}"
+            ;;
+        "version")
+            printf "%b\n" "${BOLD}${GREEN}Version:${RESET} ${YELLOW}$value${RESET}"
+            ;;
+        "id")
+            printf "%b\n" "${BOLD}${GREEN}ID:${RESET} ${PURPLE}$value${RESET}"
+            ;;
+        "pretty")
+            printf "%b\n" "${BOLD}${GREEN}Pretty Name:${RESET} ${BLUE}$value${RESET}"
+            ;;
+        "codename")
+            printf "%b\n" "${BOLD}${GREEN}Codename:${RESET} ${RED}$value${RESET}"
+            ;;
+        *)
+            echo "$value"
+            ;;
+        esac
         ;;
     esac
 }
 
-distro "$@"
+# Format all information
+format_all() {
+    local info="$1"
+    IFS='|' read -r name version id pretty codename <<<"$info"
+
+    case "$OUTPUT_FORMAT" in
+    "json")
+        # Escape quotes for JSON
+        name=$(echo "$name" | sed 's/"/\\"/g')
+        version=$(echo "$version" | sed 's/"/\\"/g')
+        id=$(echo "$id" | sed 's/"/\\"/g')
+        pretty=$(echo "$pretty" | sed 's/"/\\"/g')
+        codename=$(echo "$codename" | sed 's/"/\\"/g')
+
+        cat <<EOF
+{
+  "name": "$name",
+  "version": "$version",
+  "id": "$id",
+  "pretty": "$pretty",
+  "codename": "$codename"
+}
+EOF
+        ;;
+    "plain")
+        # Plain text output - simple key: value format
+        echo "Name: $name"
+        echo "Version: $version"
+        echo "ID: $id"
+        echo "Pretty Name: $pretty"
+        echo "Codename: $codename"
+        ;;
+    "color")
+        # Colored output with decorative borders
+        # Calculate the maximum width needed based on actual content
+        local max_width=0
+        local lines=(
+            "Distribution: $name"
+            "Version:      $version"
+            "ID:           $id"
+            "Pretty Name:  $pretty"
+            "Codename:     $codename"
+        )
+
+        # Find the longest line
+        for line in "${lines[@]}"; do
+            local len=${#line}
+            if [ $len -gt $max_width ]; then
+                max_width=$len
+            fi
+        done
+
+        # Add padding for borders and spacing
+        local box_width=$((max_width + 2))
+
+        # Function to create a horizontal line
+        make_line() {
+            local left="$1"
+            local middle="$2"
+            local right="$3"
+            local width="$4"
+            printf "%b" "$left"
+            for ((i = 0; i < width; i++)); do
+                printf "%b" "$middle"
+            done
+            printf "%b" "$right"
+        }
+
+        # Function to pad text to fixed width
+        pad_line() {
+            local text="$1"
+            local plain_text=$(echo "$text" | sed 's/\x1b\[[0-9;]*m//g')
+            local text_len=${#plain_text}
+            local pad_len=$((box_width - text_len - 1)) # -1 for the space before text
+            printf "%s%*s" "$text" $pad_len ""
+        }
+
+        # Function to center text
+        center_text() {
+            local text="$1"
+            local plain_text=$(echo "$text" | sed 's/\x1b\[[0-9;]*m//g')
+            local text_len=${#plain_text}
+            local total_pad=$((box_width - text_len))
+            local left_pad=$((total_pad / 2))
+            local right_pad=$((total_pad - left_pad))
+            printf "%*s%s%*s" $left_pad "" "$text" $right_pad ""
+        }
+
+        # Draw the box
+        printf "%b%b%b\n" "${BOLD}${BLUE}" "$(make_line '╔' '═' '╗' $box_width)" "${RESET}"
+        printf "%b%b%b%b\n" "${BOLD}${BLUE}║${RESET}" "$(center_text "${BOLD}System Information${RESET}")" "${BOLD}${BLUE}║${RESET}"
+        printf "%b%b%b\n" "${BOLD}${BLUE}" "$(make_line '╠' '═' '╣' $box_width)" "${RESET}"
+        printf "%b %b%b\n" "${BOLD}${BLUE}║${RESET}" "$(pad_line "${BOLD}${GREEN}Distribution:${RESET} ${CYAN}$name${RESET}")" "${BOLD}${BLUE}║${RESET}"
+        printf "%b %b%b\n" "${BOLD}${BLUE}║${RESET}" "$(pad_line "${BOLD}${GREEN}Version:${RESET}      ${YELLOW}$version${RESET}")" "${BOLD}${BLUE}║${RESET}"
+        printf "%b %b%b\n" "${BOLD}${BLUE}║${RESET}" "$(pad_line "${BOLD}${GREEN}ID:${RESET}           ${PURPLE}$id${RESET}")" "${BOLD}${BLUE}║${RESET}"
+        printf "%b %b%b\n" "${BOLD}${BLUE}║${RESET}" "$(pad_line "${BOLD}${GREEN}Pretty Name:${RESET}  ${BLUE}$pretty${RESET}")" "${BOLD}${BLUE}║${RESET}"
+        printf "%b %b%b\n" "${BOLD}${BLUE}║${RESET}" "$(pad_line "${BOLD}${GREEN}Codename:${RESET}     ${RED}$codename${RESET}")" "${BOLD}${BLUE}║${RESET}"
+        printf "%b%b%b\n" "${BOLD}${BLUE}" "$(make_line '╚' '═' '╝' $box_width)" "${RESET}"
+        ;;
+    esac
+}
+
+# Main distro function
+distro() {
+    local info=$(get_all_info)
+    IFS='|' read -r name version id pretty codename <<<"$info"
+
+    case "$1" in
+    "name")
+        format_output "name" "$name"
+        ;;
+    "version")
+        format_output "version" "$version"
+        ;;
+    "id")
+        format_output "id" "$id"
+        ;;
+    "pretty")
+        format_output "pretty" "$pretty"
+        ;;
+    "codename")
+        format_output "codename" "$codename"
+        ;;
+    "all")
+        format_all "$info"
+        ;;
+    *)
+        printf "%b\n" "${RED}Error: Invalid command '$1'${RESET}" >&2
+        echo "Usage: distro [OPTIONS] {name|version|id|pretty|codename|all}" >&2
+        return 1
+        ;;
+    esac
+}
+
+# Parse command line options
+COMMAND=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+    -p | --plain)
+        OUTPUT_FORMAT="plain"
+        set_colors
+        shift
+        ;;
+    -c | --color)
+        OUTPUT_FORMAT="color"
+        set_colors
+        shift
+        ;;
+    -j | --json)
+        OUTPUT_FORMAT="json"
+        set_colors
+        shift
+        ;;
+    -h | --help)
+        show_help
+        exit 0
+        ;;
+    -v | --version)
+        echo "distro version $version"
+        exit 0
+        ;;
+    -*)
+        printf "%b\n" "${RED}Error: Unknown option '$1'${RESET}" >&2
+        echo "Try 'distro --help' for more information." >&2
+        exit 1
+        ;;
+    *)
+        COMMAND="$1"
+        shift
+        ;;
+    esac
+done
+
+# If no command specified, show help
+if [[ -z "$COMMAND" ]]; then
+    show_help
+    exit 0
+fi
+
+# Execute the command
+distro "$COMMAND"
