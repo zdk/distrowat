@@ -10,11 +10,11 @@ Just because I am always forget how to get os info.
 
 # Usage
 
-Use it with the `distrowat` cli
+- Run it on your OS with `distrowat`
 
-`distrowat --help` for the current available command
+- Get more info from `distrowat --help`
 
-The following command are some examples:
+And, the following command are some examples:
 
 ## get all info
 
