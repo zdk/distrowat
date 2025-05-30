@@ -16,6 +16,23 @@ Use it with the `distrowat` cli
 
 The following command are some examples:
 
+## get all info
+
+```
+> distrowat all
+
+╔═════════════════════════════════════════╗
+║           System Information            ║
+╠═════════════════════════════════════════╣
+║ Distribution: macOS                     ║
+║ Version:      14.5                      ║
+║ ID:           macos                     ║
+║ Pretty Name:  macOS Sonoma 14.5 (23F79) ║
+║ Codename:     sonoma                    ║
+╚═════════════════════════════════════════╝
+
+```
+
 ## disto name
 
 ```
