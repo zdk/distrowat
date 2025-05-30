@@ -3,12 +3,10 @@
 # shellcheck source=/dev/null
 # shellcheck disable=2009
 
-version=0.2.0
+version=0.3.0
 
-# Default output format
 OUTPUT_FORMAT="color"
 
-# Color definitions (will be used only when OUTPUT_FORMAT is "color")
 set_colors() {
     if [[ "$OUTPUT_FORMAT" == "color" ]] && [[ -t 1 ]]; then
         RED=$'\033[0;31m'
@@ -31,10 +29,8 @@ set_colors() {
     fi
 }
 
-# Initialize colors
 set_colors
 
-# Help function
 show_help() {
     printf "%b" "${BOLD}distro${RESET} - Display distribution information\n"
     printf "\n"
@@ -54,7 +50,7 @@ show_help() {
     printf "%b" "  ${CYAN}id${RESET}        Distribution ID\n"
     printf "%b" "  ${CYAN}pretty${RESET}    Pretty formatted name\n"
     printf "%b" "  ${CYAN}codename${RESET}  Distribution codename\n"
-    printf "%b" "  ${CYAN}all${RESET}       Show all information\n"
+    printf "%b" "  ${CYAN}all${RESET}       Show all information (including release/EOL dates)\n"
     printf "\n"
     printf "%b" "${BOLD}EXAMPLES:${RESET}\n"
     printf "%b" "  distro pretty                # Colored output (default)\n"
@@ -94,7 +90,44 @@ get_macos_name() {
     esac
 }
 
-# Get all distribution information
+get_release_eol_dates() {
+    local distro_id="$1"
+    local version="$2"
+    local codename="$3"
+    local release_date="Unknown"
+    local eol_date="Unknown"
+
+    case "$distro_id" in
+    ubuntu)
+        if [[ -f /usr/share/distro-info/ubuntu.csv ]]; then
+            local csv_line
+            csv_line=$(grep "^$version," /usr/share/distro-info/ubuntu.csv 2>/dev/null)
+            if [[ -z "$csv_line" ]] && [[ -n "$codename" ]] && [[ "$codename" != "N/A" ]]; then
+                csv_line=$(grep ",$codename," /usr/share/distro-info/ubuntu.csv 2>/dev/null)
+            fi
+
+            if [[ -n "$csv_line" ]]; then
+                release_date=$(echo "$csv_line" | awk -F',' '{print $5}')
+                eol_date=$(echo "$csv_line" | awk -F',' '{print $6}')
+
+                local eol_server
+                eol_server=$(echo "$csv_line" | awk -F',' '{print $7}')
+                if [[ -n "$eol_server" ]] && [[ "$eol_server" != "$eol_date" ]]; then
+                    eol_date="$eol_server"
+                fi
+            fi
+        fi
+        ;;
+
+    *)
+        release_date="Unknown"
+        eol_date="Unknown"
+        ;;
+    esac
+
+    echo "$release_date|$eol_date"
+}
+
 get_all_info() {
     local name version id pretty codename
 
@@ -102,12 +135,13 @@ get_all_info() {
         name="macOS"
         version=$(sw_vers -productVersion 2>/dev/null || echo "Unknown")
         id="macos"
-        local build=$(sw_vers -buildVersion 2>/dev/null || echo "Unknown")
-        local version_name=$(get_macos_name "$version")
+        local build
+        build=$(sw_vers -buildVersion 2>/dev/null || echo "Unknown")
+        local version_name
+        version_name=$(get_macos_name "$version")
         pretty="macOS ${version_name} ${version} (${build})"
         codename=$(echo "$version_name" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
     else
-        # Linux detection
         if [ -f /etc/os-release ]; then
             name=$(grep "^NAME=" /etc/os-release | cut -d= -f2 | tr -d '"')
             version=$(grep "^VERSION_ID=" /etc/os-release | cut -d= -f2 | tr -d '"')
@@ -119,6 +153,12 @@ get_all_info() {
             version=$(grep -oE '[0-9]+\.?[0-9]*' /etc/redhat-release | head -1)
             id=$(awk '{print tolower($1)}' /etc/redhat-release)
             pretty=$(cat /etc/redhat-release)
+            codename=""
+        elif [ -f /etc/alpine-release ]; then
+            name="Alpine Linux"
+            version=$(cat /etc/alpine-release)
+            id="alpine"
+            pretty="Alpine Linux v$version"
             codename=""
         elif [ -f /etc/debian_version ]; then
             name="Debian"
@@ -135,29 +175,28 @@ get_all_info() {
         fi
     fi
 
-    # Handle empty codename
     [ -z "$codename" ] && codename="N/A"
 
-    echo "$name|$version|$id|$pretty|$codename"
+    local dates_info
+    dates_info=$(get_release_eol_dates "$id" "$version" "$codename")
+    IFS='|' read -r release_date eol_date <<<"$dates_info"
+
+    echo "$name|$version|$id|$pretty|$codename|$release_date|$eol_date"
 }
 
-# Format output based on selected format
 format_output() {
     local field="$1"
     local value="$2"
 
     case "$OUTPUT_FORMAT" in
     "json")
-        # Escape quotes in value for JSON
-        value=$(echo "$value" | sed 's/"/\\"/g')
+        value="${value//\"/\\\"}"
         echo "{\"$field\": \"$value\"}"
         ;;
     "plain")
-        # Plain text output - just the value
         echo "$value"
         ;;
     "color")
-        # Colored output with labels
         case "$field" in
         "name")
             printf "%b\n" "${BOLD}${GREEN}Distribution Name:${RESET} ${CYAN}$value${RESET}"
@@ -182,19 +221,19 @@ format_output() {
     esac
 }
 
-# Format all information
 format_all() {
     local info="$1"
-    IFS='|' read -r name version id pretty codename <<<"$info"
+    IFS='|' read -r name version id pretty codename release_date eol_date <<<"$info"
 
     case "$OUTPUT_FORMAT" in
     "json")
-        # Escape quotes for JSON
-        name=$(echo "$name" | sed 's/"/\\"/g')
-        version=$(echo "$version" | sed 's/"/\\"/g')
-        id=$(echo "$id" | sed 's/"/\\"/g')
-        pretty=$(echo "$pretty" | sed 's/"/\\"/g')
-        codename=$(echo "$codename" | sed 's/"/\\"/g')
+        name="${name//\"/\\\"}"
+        version="${version//\"/\\\"}"
+        id="${id//\"/\\\"}"
+        pretty="${pretty//\"/\\\"}"
+        codename="${codename//\"/\\\"}"
+        release_date="${release_date//\"/\\\"}"
+        eol_date="${eol_date//\"/\\\"}"
 
         cat <<EOF
 {
@@ -202,21 +241,22 @@ format_all() {
   "version": "$version",
   "id": "$id",
   "pretty": "$pretty",
-  "codename": "$codename"
+  "codename": "$codename",
+  "release_date": "$release_date",
+  "end_of_life": "$eol_date"
 }
 EOF
         ;;
     "plain")
-        # Plain text output - simple key: value format
         echo "Name: $name"
         echo "Version: $version"
         echo "ID: $id"
         echo "Pretty Name: $pretty"
         echo "Codename: $codename"
+        echo "Release Date: $release_date"
+        echo "End of Life: $eol_date"
         ;;
     "color")
-        # Colored output with decorative borders
-        # Calculate the maximum width needed based on actual content
         local max_width=0
         local lines=(
             "Distribution: $name"
@@ -224,20 +264,19 @@ EOF
             "ID:           $id"
             "Pretty Name:  $pretty"
             "Codename:     $codename"
+            "Release Date: $release_date"
+            "End of Life:  $eol_date"
         )
 
-        # Find the longest line
         for line in "${lines[@]}"; do
             local len=${#line}
-            if [ $len -gt $max_width ]; then
+            if [ "$len" -gt "$max_width" ]; then
                 max_width=$len
             fi
         done
 
-        # Add padding for borders and spacing
         local box_width=$((max_width + 2))
 
-        # Function to create a horizontal line
         make_line() {
             local left="$1"
             local middle="$2"
@@ -250,19 +289,21 @@ EOF
             printf "%b" "$right"
         }
 
-        # Function to pad text to fixed width
         pad_line() {
             local text="$1"
-            local plain_text=$(echo "$text" | sed 's/\x1b\[[0-9;]*m//g')
+            local plain_text
+            # shellcheck disable=SC2001
+            plain_text=$(echo "$text" | sed 's/\x1b\[[0-9;]*m//g')
             local text_len=${#plain_text}
             local pad_len=$((box_width - text_len - 1)) # -1 for the space before text
             printf "%s%*s" "$text" $pad_len ""
         }
 
-        # Function to center text
         center_text() {
             local text="$1"
-            local plain_text=$(echo "$text" | sed 's/\x1b\[[0-9;]*m//g')
+            local plain_text
+            # shellcheck disable=SC2001
+            plain_text=$(echo "$text" | sed 's/\x1b\[[0-9;]*m//g')
             local text_len=${#plain_text}
             local total_pad=$((box_width - text_len))
             local left_pad=$((total_pad / 2))
@@ -270,24 +311,27 @@ EOF
             printf "%*s%s%*s" $left_pad "" "$text" $right_pad ""
         }
 
-        # Draw the box
+        # Draw system information box
         printf "%b%b%b\n" "${BOLD}${BLUE}" "$(make_line '╔' '═' '╗' $box_width)" "${RESET}"
-        printf "%b%b%b%b\n" "${BOLD}${BLUE}║${RESET}" "$(center_text "${BOLD}System Information${RESET}")" "${BOLD}${BLUE}║${RESET}"
+        printf "%b%b%b\n" "${BOLD}${BLUE}║${RESET}" "$(center_text "${BOLD}System Information${RESET}")" "${BOLD}${BLUE}║${RESET}"
         printf "%b%b%b\n" "${BOLD}${BLUE}" "$(make_line '╠' '═' '╣' $box_width)" "${RESET}"
         printf "%b %b%b\n" "${BOLD}${BLUE}║${RESET}" "$(pad_line "${BOLD}${GREEN}Distribution:${RESET} ${CYAN}$name${RESET}")" "${BOLD}${BLUE}║${RESET}"
         printf "%b %b%b\n" "${BOLD}${BLUE}║${RESET}" "$(pad_line "${BOLD}${GREEN}Version:${RESET}      ${YELLOW}$version${RESET}")" "${BOLD}${BLUE}║${RESET}"
         printf "%b %b%b\n" "${BOLD}${BLUE}║${RESET}" "$(pad_line "${BOLD}${GREEN}ID:${RESET}           ${PURPLE}$id${RESET}")" "${BOLD}${BLUE}║${RESET}"
         printf "%b %b%b\n" "${BOLD}${BLUE}║${RESET}" "$(pad_line "${BOLD}${GREEN}Pretty Name:${RESET}  ${BLUE}$pretty${RESET}")" "${BOLD}${BLUE}║${RESET}"
         printf "%b %b%b\n" "${BOLD}${BLUE}║${RESET}" "$(pad_line "${BOLD}${GREEN}Codename:${RESET}     ${RED}$codename${RESET}")" "${BOLD}${BLUE}║${RESET}"
+        printf "%b%b%b\n" "${BOLD}${BLUE}" "$(make_line '╟' '─' '╢' $box_width)" "${RESET}"
+        printf "%b %b%b\n" "${BOLD}${BLUE}║${RESET}" "$(pad_line "${BOLD}${GREEN}Release Date:${RESET} ${CYAN}$release_date${RESET}")" "${BOLD}${BLUE}║${RESET}"
+        printf "%b %b%b\n" "${BOLD}${BLUE}║${RESET}" "$(pad_line "${BOLD}${GREEN}End of Life:${RESET}  ${RED}$eol_date${RESET}")" "${BOLD}${BLUE}║${RESET}"
         printf "%b%b%b\n" "${BOLD}${BLUE}" "$(make_line '╚' '═' '╝' $box_width)" "${RESET}"
         ;;
     esac
 }
 
-# Main distro function
 distro() {
-    local info=$(get_all_info)
-    IFS='|' read -r name version id pretty codename <<<"$info"
+    local info
+    info=$(get_all_info)
+    IFS='|' read -r name version id pretty codename release_date eol_date <<<"$info"
 
     case "$1" in
     "name")
@@ -316,7 +360,6 @@ distro() {
     esac
 }
 
-# Parse command line options
 COMMAND=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -355,11 +398,9 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# If no command specified, show help
 if [[ -z "$COMMAND" ]]; then
     show_help
     exit 0
 fi
 
-# Execute the command
 distro "$COMMAND"
