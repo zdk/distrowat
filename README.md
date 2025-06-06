@@ -4,9 +4,19 @@ Fetch distro info `¯*(ツ)*/¯`
 
 # Installation
 
+## using curl:
+
 `curl -fsSL https://raw.githubusercontent.com/zdk/distrowat/refs/heads/main/install.sh | sudo bash`
 
-Or with `dkpg`,
+## using `homebrew`:
+
+```bash
+brew tap zdk/tools
+brew install distrowat
+
+```
+
+## using `dkpg`:
 
 `curl -LO https://github.com/zdk/distrowat/releases/download/v0.9.0/distrowat_0.9.0_all.deb`
 
