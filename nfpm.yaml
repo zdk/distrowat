@@ -1,0 +1,23 @@
+name: distrowat
+arch: all
+platform: linux
+version: v0.9.0
+section: utils
+priority: optional
+
+maintainer: Di Warachet S. <di.warachet@gmail.com>
+description: Command to fetch OS Distribution information
+homepage: https://github.com/zdk/distrowat
+license: Apache
+vendor: zdk
+
+depends:
+  - bash
+
+contents:
+  - src: ./distrowat
+    dst: /usr/bin/distrowat
+    file_info:
+      mode: 0755
+      owner: root
+      group: root
