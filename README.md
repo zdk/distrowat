@@ -6,9 +6,10 @@ Fetch distro info `¯*(ツ)*/¯`
 
 `curl -fsSL https://raw.githubusercontent.com/zdk/distrowat/refs/heads/main/install.sh | sudo bash`
 
-or without sudo
+Or with dkpg,
 
-`curl -fsSL https://raw.githubusercontent.com/zdk/distrowat/refs/heads/main/install.sh | bash`
+`curl -LO https://github.com/zdk/distrowat/releases/download/v0.9.0/distrowat_0.9.0_all.deb`
+`dpkg -i distrowat_0.9.0_all.deb`
 
 # Usage
 
