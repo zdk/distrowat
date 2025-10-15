@@ -119,6 +119,11 @@ get_release_eol_dates() {
         fi
         ;;
 
+    arch | archarm | cachyos | manjaro | endeavouros | garuda)
+        release_date="Rolling Release"
+        eol_date="N/A"
+        ;;
+
     *)
         release_date="Unknown"
         eol_date="Unknown"
@@ -148,6 +153,13 @@ get_all_info() {
             id=$(grep "^ID=" /etc/os-release | cut -d= -f2 | tr -d '"')
             pretty=$(grep "^PRETTY_NAME=" /etc/os-release | cut -d= -f2 | tr -d '"')
             codename=$(grep "^VERSION_CODENAME=" /etc/os-release | cut -d= -f2 | tr -d '"')
+
+            # For Arch-based distros, use BUILD_ID if VERSION_ID is not available
+            if [[ -z "$version" ]] && [[ "$id" =~ ^(arch|archarm|cachyos|manjaro|endeavouros|garuda)$ ]]; then
+                version=$(grep "^BUILD_ID=" /etc/os-release | cut -d= -f2 | tr -d '"')
+                # If still empty, use "Rolling"
+                [[ -z "$version" ]] && version="Rolling"
+            fi
         elif [ -f /etc/redhat-release ]; then
             name=$(awk '{print $1}' /etc/redhat-release)
             version=$(grep -oE '[0-9]+\.?[0-9]*' /etc/redhat-release | head -1)
